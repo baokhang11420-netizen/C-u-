@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game Câu Cá 3D Chân Thực</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #000;
+            user-select: none;
+        }
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        /* UI HUD Overlay */
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            box-sizing: border-box;
+            padding: 20px;
+        }
+
+        .hud-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+
+        .stats-card {
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 16px;
+            padding: 15px 25px;
+            color: #fff;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        .stats-card h2 {
+            margin: 0 0 5px 0;
+            font-size: 16px;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .stats-card .value {
+            font-size: 28px;
+            font-weight: 800;
+            color: #38bdf8;
+            text-shadow: 0 0 10px rgba(56, 189, 248, 0.5);
+        }
+
+        /* Controls / Instructions */
+        .controls-hint {
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(8px);
+            color: #e2e8f0;
+            padding: 12px 20px;
+            border-radius: 30px;
+            font-size: 14px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        /* Tension Bar Mechanics */
+        #tension-container {
+            position: absolute;
+            top: 50%;
+            right: 40px;
+            transform: translateY(-50%);
+            width: 24px;
+            height: 300px;
+            background: rgba(15, 23, 42, 0.8);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 12px;
+            overflow: hidden;
+            display: none;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        }
+
+        #tension-bar {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            height: 0%;
+            background: linear-gradient(to top, #22c55e, #eab308, #ef4444);
+            transition: height 0.1s ease-out;
+            border-radius: 10px;
+        }
+
+        #tension-target {
+            position: absolute;
+            width: 100%;
+            height: 25%;
+            top: 37.5%;
+            background: rgba(255, 255, 255, 0.3);
+            border-top: 2px solid #fff;
+            border-bottom: 2px solid #fff;
+            box-sizing: border-box;
+        }
+
+        /* Action Prompt Button */
+        #action-btn {
+            position: absolute;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            pointer-events: auto;
+            background: linear-gradient(135deg, #0284c7, #0369a1);
+            color: white;
+            border: none;
+            padding: 18px 45px;
+            font-size: 20px;
+            font-weight: bold;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 10px 25px rgba(2, 132, 199, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+            transition: all 0.2s ease;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+        }
+
+        #action-btn:hover {
+            transform: translateX(-50%) scale(1.05);
+            box-shadow: 0 15px 30px rgba(2, 132, 199, 0.7);
+        }
+
+        #action-btn:active {
+            transform: translateX(-50%) scale(0.95);
+        }
+
+        /* Catch Screen Flash / Explosion Effect */
+        #fx-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .catch-text {
+            font-size: 90px;
+            font-weight: 900;
+            font-style: italic;
+            color: #fff;
+            text-shadow: 0 0 20px #f59e0b, 0 0 40px #d97706, 0 0 60px #b45309;
+            transform: scale(0) rotate(-10deg);
+            opacity: 0;
+            transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s ease;
+        }
+
+        .catch-text.active {
+            transform: scale(1.2) rotate(-5deg);
+            opacity: 1;
+        }
+    </style>
+    <!-- Three.js Engine & Water Shader -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/objects/Water.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div id="ui-layer">
+        <div class="hud-top">
+            <div class="stats-card">
+                <h2>Cá Đã Câu</h2>
+                <div class="value" id="score-val">0</div>
+            </div>
+            <div class="controls-hint">
+                🖱️ Đeo giữ chuột trái để xoay góc nhìn | 🖱️ Lăn chuột để zoom
+            </div>
+            <div class="stats-card">
+                <h2>Tiền Xu (Aura)</h2>
+                <div class="value" id="coin-val">0 💰</div>
+            </div>
+        </div>
+
+        <div id="tension-container">
+            <div id="tension-target"></div>
+            <div id="tension-bar"></div>
+        </div>
+
+        <button id="action-btn">QUĂNG CẦN</button>
+    </div>
+
+    <div id="fx-overlay">
+        <div id="catch-fx" class="catch-text">BÙM! +500 AURA</div>
+    </div>
+
+    <script>
+        // --- 1. KHỞI TẠO CẢNH (SCENE), CAMERA, RENDERER ---
+        const container = document.getElementById('canvas-container');
+        
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0xaaccff, 0.005);
+
+        const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 2000);
+        camera.position.set(0, 3, 8);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        container.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.maxPolarAngle = Math.PI / 2 - 0.01;
+        controls.minDistance = 3;
+        controls.maxDistance = 20;
+
+        // --- 2. ÁNH SÁNG CHÂN THỰC (LIGHTING & SUN) ---
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+        scene.add(ambientLight);
+
+        const sunLight = new THREE.DirectionalLight(0xfffaed, 1.5);
+        sunLight.position.set(50, 40, -50);
+        sunLight.castShadow = true;
+        sunLight.shadow.mapSize.width = 2048;
+        sunLight.shadow.mapSize.height = 2048;
+        sunLight.shadow.camera.near = 0.5;
+        sunLight.shadow.camera.far = 150;
+        const d = 20;
+        sunLight.shadow.camera.left = -d;
+        sunLight.shadow.camera.right = d;
+        sunLight.shadow.camera.top = d;
+        sunLight.shadow.camera.bottom = -d;
+        scene.add(sunLight);
+
+        // Skybox Đơn Giản & Ấm Áp
+        scene.background = new THREE.Color(0x87ceeb);
+
+        // --- 3. TẠO MẶT NƯỚC CHÂN THỰC (WATER SHADER) ---
+        const waterGeometry = new THREE.PlaneGeometry(1000, 1000);
+        
+        // Tạo Texture Gợn Nước Thuần Code (Không cần hình ảnh bên ngoài)
+        function createNormalMap() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#8080ff';
+            ctx.fillRect(0, 0, 512, 512);
+            for(let i=0; i<5000; i++) {
+                ctx.fillStyle = `rgba(${Math.random()*255},${Math.random()*255},255,0.1)`;
+                ctx.beginPath();
+                ctx.arc(Math.random()*512, Math.random()*512, Math.random()*20, 0, Math.PI*2);
+                ctx.fill();
+            }
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        const water = new THREE.Water(waterGeometry, {
+            textureWidth: 512,
+            textureHeight: 512,
+            waterNormals: createNormalMap(),
+            sunDirection: new THREE.Vector3().copy(sunLight.position).normalize(),
+            sunColor: 0xffffff,
+            waterColor: 0x001e0f,
+            distortionScale: 3.7,
+            fog: scene.fog !== undefined
+        });
+        water.rotation.x = -Math.PI / 2;
+        water.waterNormals.texture.wrapS = water.waterNormals.texture.wrapT = THREE.RepeatWrapping;
+        scene.add(water);
+
+        // --- 4. TẠO MÔ HÌNH BỜ ĐÁ & BỘ PHẬN CẦN CÂU ---
+        // Bờ Đá
+        const rockGeo = new THREE.DodecahedronGeometry(3, 1);
+        const rockMat = new THREE.MeshStandardMaterial({ color: 0x4a5568, roughness: 0.9, metalness: 0.1 });
+        const rock = new THREE.Mesh(rockGeo, rockMat);
+        rock.position.set(0, -1.2, 4);
+        rock.scale.set(2, 0.8, 1.5);
+        rock.receiveShadow = true;
+        rock.castShadow = true;
+        scene.add(rock);
+
+        // Cần Câu 3D
+        const rodGroup = new THREE.Group();
+        
+        // Tay cầm
+        const handleGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.6, 16);
+        const handleMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.5 });
+        const handle = new THREE.Mesh(handleGeo, handleMat);
+        handle.position.y = 0.3;
+        rodGroup.add(handle);
+
+        // Thân cần câu (Thuôn dài)
+        const poleGeo = new THREE.CylinderGeometry(0.01, 0.035, 3.5, 16);
+        const poleMat = new THREE.MeshStandardMaterial({ color: 0xd97706, metalness: 0.8, roughness: 0.2 });
+        const pole = new THREE.Mesh(poleGeo, poleMat);
+        pole.position.y = 2.2;
+        rodGroup.add(pole);
+
+        rodGroup.position.set(0, 0.5, 3);
+        rodGroup.rotation.x = Math.PI / 4; // Nghiêng 45 độ
+        scene.add(rodGroup);
+
+        // Đầu Cần Câu (Dùng để tính vị trí dây câu)
+        const tipMarker = new THREE.Object3D();
+        tipMarker.position.set(0, 3.9, 0);
+        rodGroup.add(tipMarker);
+
+        // Phao Câu (Bobber)
+        const floatGroup = new THREE.Group();
+        const floatTopGeo = new THREE.SphereGeometry(0.12, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+        const floatTopMat = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.3 });
+        const floatTop = new THREE.Mesh(floatTopGeo, floatTopMat);
+        
+        const floatBottomGeo = new THREE.SphereGeometry(0.12, 16, 16, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2);
+        const floatBottomMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3 });
+        const floatBottom = new THREE.Mesh(floatBottomGeo, floatBottomMat);
+        
+        floatGroup.add(floatTop);
+        floatGroup.add(floatBottom);
+        floatGroup.position.set(0, 0, 3); // Bắt đầu ở cạnh người
+        floatGroup.visible = false;
+        scene.add(floatGroup);
+
+        // Dây Câu (Line)
+        const lineMaterial = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6 });
+        const lineGeometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
+        const fishingLine = new THREE.Line(lineGeometry, lineMaterial);
+        scene.add(fishingLine);
+
+        // --- 5. HIỆU ỨNG HẠT (PARTICLES SYSTEM) ---
+        // Bọt nước văng (Splashes)
+        const splashCount = 40;
+        const splashGeo = new THREE.BufferGeometry();
+        const splashPos = new Float32Array(splashCount * 3);
+        const splashVels = [];
+
+        for(let i=0; i<splashCount; i++) {
+            splashPos[i*3] = 0;
+            splashPos[i*3+1] = -10; // Giấu đi
+            splashPos[i*3+2] = 0;
+            splashVels.push(new THREE.Vector3());
+        }
+
+        splashGeo.setAttribute('position', new THREE.BufferAttribute(splashPos, 3));
+        const splashMat = new THREE.PointsMaterial({
+            color: 0xffffff,
+            size: 0.15,
+            transparent: true,
+            opacity: 0.8
+        });
+        const splashParticles = new THREE.Points(splashGeo, splashMat);
+        scene.add(splashParticles);
+
+        function triggerSplash(pos) {
+            const positions = splashParticles.geometry.attributes.position.array;
+            for(let i=0; i<splashCount; i++) {
+                positions[i*3] = pos.x;
+                positions[i*3+1] = pos.y;
+                positions[i*3+2] = pos.z;
+                
+                splashVels[i] = new THREE.Vector3(
+                    (Math.random() - 0.5) * 2,
+                    Math.random() * 3 + 2,
+                    (Math.random() - 0.5) * 2
+                );
+            }
+            splashParticles.geometry.attributes.position.needsUpdate = true;
+        }
+
+        // --- 6. MÁY TRẠNG THÁI GAME (GAME LOGIC) ---
+        const STATE = { IDLE: 0, CASTING: 1, WAITING: 2, BITE: 3, REELING: 4 };
+        let currentState = STATE.IDLE;
+
+        let score = 0;
+        let coins = 0;
+        let tension = 0;
+        let targetPos = new THREE.Vector3();
+        let floatVelocityY = 0;
+        let biteTimer = 0;
+
+        // UI Element References
+        const actionBtn = document.getElementById('action-btn');
+        const tensionContainer = document.getElementById('tension-container');
+        const tensionBar = document.getElementById('tension-bar');
+        const scoreVal = document.getElementById('score-val');
+        const coinVal = document.getElementById('coin-val');
+        const catchFx = document.getElementById('catch-fx');
+
+        // Danh sách các loại cá
+        const fishTypes = [
+            { name: "Cá Hồi Cá Hạng Thường", reward: 100, color: 0x38bdf8 },
+            { name: "Cá Kiếm Khổng Lồ", reward: 300, color: 0xa855f7 },
+            { name: "Cá Rồng Huyền Thoại", reward: 1000, color: 0xf59e0b }
+        ];
+
+        // Sự kiện click nút bấm chính
+        actionBtn.addEventListener('click', handleAction);
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') handleAction();
+        });
+
+        function handleAction() {
+            if (currentState === STATE.IDLE) {
+                castLine();
+            } else if (currentState === STATE.BITE) {
+                startReeling();
+            } else if (currentState === STATE.REELING) {
+                // Tăng lực kéo khi nhấp liên tục
+                tension += 14;
+            }
+        }
+
+        function castLine() {
+            currentState = STATE.CASTING;
+            actionBtn.innerText = "ĐANG CHỜ CÁ...";
+            actionBtn.style.opacity = "0.5";
+            actionBtn.style.pointerEvents = "none";
+
+            // Vị trí thả phao ngẫu nhiên trên mặt nước
+            targetPos.set((Math.random() - 0.5) * 4, 0, -4 - Math.random() * 4);
+            
+            floatGroup.position.set(0, 2, 2);
+            floatGroup.visible = true;
+            floatVelocityY = 2; // Bật phao lên không trung trước khi rơi xuống
+        }
+
+        function startReeling() {
+            currentState = STATE.REELING;
+            tension = 30;
+            tensionContainer.style.display = 'block';
+            actionBtn.innerText = "GIỮ VÀ NHẤP (PULL!)";
+            actionBtn.style.opacity = "1";
+            actionBtn.style.pointerEvents = "auto";
+        }
+
+        function catchFishSuccess() {
+            currentState = STATE.IDLE;
+            tensionContainer.style.display = 'none';
+            floatGroup.visible = false;
+            actionBtn.innerText = "QUĂNG CẦN";
+
+            // Chọn ngẫu nhiên cá
+            const fish = fishTypes[Math.floor(Math.random() * fishTypes.length)];
+            score += 1;
+            coins += fish.reward;
+            
+            scoreVal.innerText = score;
+            coinVal.innerText = coins + " 💰";
+
+            // Hiệu ứng Visual BÙM!
+            catchFx.innerText = `BÙM! +${fish.reward} AURA\n[${fish.name}]`;
+            catchFx.classList.add('active');
+            triggerSplash(floatGroup.position);
+
+            setTimeout(() => {
+                catchFx.classList.remove('active');
+            }, 2000);
+        }
+
+        function fishEscape() {
+            currentState = STATE.IDLE;
+            tensionContainer.style.display = 'none';
+            floatGroup.visible = false;
+            actionBtn.innerText = "CÁ TRỐN MẤT! (THỬ LẠI)";
+            actionBtn.style.opacity = "1";
+            actionBtn.style.pointerEvents = "auto";
+            
+            setTimeout(() => {
+                if(currentState === STATE.IDLE) actionBtn.innerText = "QUĂNG CẦN";
+            }, 2000);
+        }
+
+        // --- 7. GAME LOOP & ANIMATION ---
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const delta = clock.getDelta();
+            const time = clock.getElapsedTime();
+
+            // Cập nhật Shader Nước
+            water.material.uniforms['time'].value += delta * 0.8;
+
+            // Xử lý vị trí dây câu (Nối từ đầu cần câu tới phao)
+            if (floatGroup.visible) {
+                const tipWorldPos = new THREE.Vector3();
+                tipMarker.getWorldPosition(tipWorldPos);
+                
+                const linePositions = fishingLine.geometry.attributes.position.array;
+                linePositions[0] = tipWorldPos.x;
+                linePositions[1] = tipWorldPos.y;
+                linePositions[2] = tipWorldPos.z;
+                
+                linePositions[3] = floatGroup.position.x;
+                linePositions[4] = floatGroup.position.y + 0.1;
+                linePositions[5] = floatGroup.position.z;
+                fishingLine.geometry.attributes.position.needsUpdate = true;
+                fishingLine.visible = true;
+            } else {
+                fishingLine.visible = false;
+            }
+
+            // --- Logic Theo Trạng Thái ---
+            if (currentState === STATE.CASTING) {
+                // Động tác quăng phao rơi xuống nước
+                floatGroup.position.x += (targetPos.x - floatGroup.position.x) * delta * 4;
+                floatGroup.position.z += (targetPos.z - floatGroup.position.z) * delta * 4;
+                
+                floatVelocityY -= 9.8 * delta;
+                floatGroup.position.y += floatVelocityY * delta;
+
+                if (floatGroup.position.y <= 0) {
+                    floatGroup.position.y = 0;
+                    currentState = STATE.WAITING;
+                    biteTimer = time + 2 + Math.random() * 4; // Cá cắn sau 2-6s
+                    triggerSplash(floatGroup.position);
+                }
+            } 
+            else if (currentState === STATE.WAITING) {
+                // Phao nhấp nhô chân thực theo sóng nước
+                floatGroup.position.y = Math.sin(time * 3) * 0.05;
+                floatGroup.rotation.z = Math.sin(time * 2) * 0.1;
+
+                if (time >= biteTimer) {
+                    currentState = STATE.BITE;
+                    actionBtn.innerText = "CÁ CẮN! GIẬT CẦN NGAY!";
+                    actionBtn
